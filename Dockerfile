@@ -7,7 +7,7 @@
 # Authors:
 # Xiangmin Jiao <xmjiao@gmail.com>
 
-FROM x11vnc/baseimage:0.9.22
+FROM x11vnc/baseimage:17.10
 LABEL maintainer Xiangmin Jiao <xmjiao@gmail.com>
 
 ARG DOCKER_LANG=en_US
@@ -28,11 +28,14 @@ RUN locale-gen $LANG && \
     apt-get install -y --no-install-recommends \
         man \
         sudo \
+        rsync \
         bsdtar \
         net-tools \
-        xdotool \
+        inetutils-ping \
         zsh \
+        build-essential \
         git \
+        dos2unix \
         \
         openssh-server \
         g++ \
@@ -52,12 +55,10 @@ RUN locale-gen $LANG && \
         mesa-utils \
         libgl1-mesa-dri \
         x11vnc \
-        dbus-x11 \
-        alsa-base \
-        pulseaudio \
         \
-        chromium-browser \
+        firefox \
         xpdf && \
+    apt-get -y autoremove && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Install websokify and noVNC
@@ -70,6 +71,23 @@ RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
     curl -s -L https://github.com/x11vnc/noVNC/archive/master.tar.gz | \
          bsdtar zxf - -C /usr/local/noVNC --strip-components 1 && \
     rm -rf /tmp/* /var/tmp/*
+
+# Install x11vnc from source
+# Install x-related to compile x11vnc from source code.
+# https://bugs.launchpad.net/ubuntu/+source/x11vnc/+bug/1686084
+RUN apt-get update && \
+    apt-get install -y libxtst-dev libssl-dev libjpeg-dev && \
+    \
+    mkdir -p /tmp/x11vnc-0.9.14 && \
+    curl -s -L http://x11vnc.sourceforge.net/dev/x11vnc-0.9.14-dev.tar.gz | \
+        bsdtar zxf - -C /tmp/x11vnc-0.9.14 --strip-components 1 && \
+    cd /tmp/x11vnc-0.9.14 && \
+    ./configure --prefix=/usr/local CFLAGS='-O2 -fno-stack-protector -Wall' && \
+    make && \
+    make install && \
+    apt-get -y remove libxtst-dev libssl-dev libjpeg-dev && \
+    apt-get -y autoremove && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 ########################################################
 # Customization for user and location
@@ -92,21 +110,18 @@ RUN useradd -m -s $DOCKER_SHELL -G sudo,docker_env $DOCKER_USER && \
     ln -s -f /usr/share/zoneinfo/$DOCKER_TIMEZONE /etc/localtime && \
     ldconfig
 
-ADD image /
-ADD conf/ $DOCKER_HOME/.config
+ADD image/etc /etc
+ADD image/usr /usr
+ADD image/home $DOCKER_HOME
 
 RUN touch $DOCKER_HOME/.sudo_as_admin_successful && \
     mkdir -p $DOCKER_HOME/shared && \
-    mkdir -p $DOCKER_HOME/.vnc && \
     mkdir -p $DOCKER_HOME/.ssh && \
     mkdir -p $DOCKER_HOME/.log && touch $DOCKER_HOME/.log/vnc.log && \
-    ln -s -f .config/zsh/zshrc /home/$DOCKER_USER/.zshrc && \
-    ln -s -f .config/zsh/zprofile /home/$DOCKER_USER/.zprofile && \
+    echo "export NO_AT_BRIDGE=1" >> $DOCKER_HOME/.profile && \
+    ln -s -f .config/mozilla $HOME/.mozilla && \
     echo "[ ! -f $HOME/WELCOME -o -z \"\$DISPLAY\" ] || cat $HOME/WELCOME" \
         >> $DOCKER_HOME/.profile && \
-    mkdir -p $DOCKER_HOME/.config/git && \
-    touch -d '50 years ago' $DOCKER_HOME/.config/git/config && \
-    ln -s -f .config/git/config /home/$DOCKER_USER/.gitconfig && \
     chown -R $DOCKER_USER:$DOCKER_GROUP $DOCKER_HOME
 
 WORKDIR $DOCKER_HOME
